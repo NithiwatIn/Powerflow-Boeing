@@ -16,7 +16,7 @@ Directory Architecture
             │   │   └── ...
             │   └── ...
             │
-                ├── models/                  # Structure data (Entities)
+            ├── models/                      # Structure data (Entities)
             │   ├── bus.py
             │   ├── line.py
             │   ├── generator.py
