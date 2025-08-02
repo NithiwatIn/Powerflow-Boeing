@@ -6,7 +6,7 @@ Directory Architecture
     Project Structure
         powerflow/
             │
-            ├── data/                                 # Data input files (bus, line, generator)
+            ├── data/                        # Data input files (bus, line, generator)
             │   ├── ieee14/
             │   │   ├── bus.csv
             │   │   ├── line.csv
@@ -16,37 +16,37 @@ Directory Architecture
             │   │   └── ...
             │   └── ...
             │
-            ├── models/                            # Structure data (Entities)
+                ├── models/                  # Structure data (Entities)
             │   ├── bus.py
             │   ├── line.py
             │   ├── generator.py
             │   └── system.py
             │
-            ├── algorithms/                      # Power Flow Solver
+            ├── algorithms/                  # Power Flow Solver
             │   ├── newton_raphson.py
             │   ├── fast_decoupled.py
             │   └── gauss_seidel.py
             │
-            ├── core/                               # Core Logic 
-            │   ├── admittance.py           # Create Y-bus
-            │   ├── mismatch.py             # Calculate P/Q mismatch
-            │   ├── jacobian.py               # Create Jacobian
-            │   ├── update_state.py         # Update V, θ
+            ├── core/                        # Core Logic 
+            │   ├── admittance.py            # Create Y-bus
+            │   ├── mismatch.py              # Calculate P/Q mismatch
+            │   ├── jacobian.py              # Create Jacobian
+            │   ├── update_state.py          # Update V, θ
             │   └── frequency.py             # Calculate frequency in the system
             │
-            ├── utils/                               # Utilities
-            │   ├── file_io.py                  # Load/Save CSV, JSON
-            │   ├── plot.py                      # Plot output graph
-            │   └── formatter.py              # Output formatting
+            ├── utils/                       # Utilities
+            │   ├── file_io.py               # Load/Save CSV, JSON
+            │   ├── plot.py                  # Plot output graph
+            │   └── formatter.py             # Output formatting
             │
-            ├── results/                           # Output data
+            ├── results/                     # Output data
             │   ├── ieee14_run1.csv
             │   └── plots/
             │
-            ├── tests/                              # Unit tests
+            ├── tests/                       # Unit tests
             │   ├── test_newton.py
             │   ├── test_ybus.py
             │   └── ...
             │
-            ├── main.py                         # Software entry point
+            ├── main.py                      # Software entry point
             └── README.md
