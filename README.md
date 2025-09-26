@@ -5,7 +5,7 @@ Version 1.0.0
  - Loadflow
  - Distributed Loadflow with participation factor 
 
-Version 1.1.0
+Version 1.1.0 (latest)
  - calculate Frequency Deviation for microgrid transferring mode
 
 Directory Architecture
