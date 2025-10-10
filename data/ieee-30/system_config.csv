@@ -1,3 +1,6 @@
 Parameter,Value
 BaseMVA,100
 BaseFrequency,50
+MPG_Disconnecting,1
+MPG_Bus,1
+Disconnecting_Time,99

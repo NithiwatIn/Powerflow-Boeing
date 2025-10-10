@@ -1,4 +1,4 @@
-GenID,BusID,Pg_MW,Qg_MVAR,Pmax_MW,Pmin_MW,Inertia_H,Droop_R,ParticipationFactor,Status
+GenID,BusID,Pg_MW,Qg_MVAR,Pmin_MW,Pmax_MW,Inertia_H,Droop_R,ParticipationFactor,Status
 1,1,0,0,50,200,5,0.04,1,1
 2,2,40,0,20,80,3.5,0.05,0,1
 3,5,0,0,15,50,3,0.05,0,1

@@ -8,10 +8,11 @@ Directory Architecture
             │
             ├── data/                        # Data input files (bus, line, generator)
             │   ├── ieee14/
-            │   │   ├── bus.csv
-            │   │   ├── line.csv
-            │   │   ├── gen.csv
-            │   │   └── load.csv
+            │   │   ├── bus_data.csv
+            │   │   ├── line_data.csv
+            │   │   ├── generator_data.csv
+            │   │   ├── load_data.csv
+            │   │   └── system_config.csv
             │   ├── ieee30/
             │   │   └── ...
             │   └── ...
@@ -50,3 +51,16 @@ Directory Architecture
             │
             ├── main.py                      # Software entry point
             └── README.md
+
+folder data
+    folder ieee-30
+        - bus_data.csv
+        - line_data.csv
+        - generator_data.csv
+        - load_data.csv
+        - system_config.csv
+folder simulation
+    - newtonrapson_loadflow.py
+folder utils
+    - ybus_builder.py
+    - data_manager.py

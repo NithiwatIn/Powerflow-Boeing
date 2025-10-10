@@ -1,2 +1,6 @@
 pandas
 numpy
+customtkinter
+tabulate
+scipy
+matplotlib
