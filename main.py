@@ -72,8 +72,14 @@
 
 
 from gui.app_gui import App
+import sys
 
 if __name__ == "__main__":
-    # สร้าง instance ของ App class และเริ่ม event loop
     app = App()
-    app.mainloop()
+    try:
+        # พยายามรัน mainloop ตามปกติ
+        app.mainloop()
+    except KeyboardInterrupt:
+        # แต่ถ้าโดนขัดจังหวะด้วย Ctrl+C ให้ทำส่วนนี้แทน
+        print("\nApplication terminated by user. Goodbye!")
+        sys.exit(0) # ออกจากโปรแกรมอย่างสมบูรณ์

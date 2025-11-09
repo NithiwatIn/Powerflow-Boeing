@@ -1,101 +1,132 @@
-# microgrid_project/simulation/use_cases/continuous_load_flow_case.py
+# microgrid_project/simulation/usecases/continuous_loadflow_case.py
 
 import pandas as pd
+import numpy as np
 from ..newtonrapson_loadflow import run_newton_raphson
 from ..ybus_builder import build_ybus
 
 def run(system_data: dict) -> tuple:
-    """
-    รัน Use Case: Continuous Load Flow
-    - จำลองการทำงาน 24 ชม. (96 steps) ตาม Load Profile
-    - คืนค่า (string_summary, results_dict) ที่มีข้อมูลเวลา
-    """
     output_string = ""
     results_dict = None
-    BASE_MVA = 100.0
-
+    
     try:
-        # --- 1. เตรียมข้อมูล ---
         output_string += "[1] Preparing for time-series simulation...\n"
         if system_data.get('load_profile') is None:
             raise FileNotFoundError("load_profile_pattern.csv not found in 'data/' directory.")
         
-        load_multipliers = system_data['load_profile']['pattern_1'].tolist()
-        num_steps = len(load_multipliers)
+        config = system_data.get('config', {})
+        BASE_MVA = config.get('BaseMVA', 100.0)
         
-        if num_steps != 96:
-            output_string += f"[WARNING] Load profile has {num_steps} points, not 96. Running for available points.\n"
+        buses = system_data['buses']
+        lines = system_data['lines']
+        initial_gens = system_data['generators']
+        initial_loads = system_data['loads']
+        load_profile = system_data['load_profile']['pattern_1'].tolist()
+        num_steps = len(load_profile)
         
-        initial_loads = system_data['loads'].copy()
+        
         initial_loads['pf'] = (initial_loads['Pd_MW'] / 
-                              ((initial_loads['Pd_MW']**2 + initial_loads['Qd_MVAR']**2)**0.5)).fillna(0.9)
+                               ((initial_loads['Pd_MW']**2 + initial_loads['Qd_MVAR']**2)**0.5)).fillna(0.9)
 
-        ybus_matrix = build_ybus(system_data['buses'], system_data['lines'])
-        
-        # --- จุดที่แก้ไข: สร้าง Index เวลา ---
-        # สร้าง list ของเวลาตลอด 24 ชม. ห่างกันทุก 15 นาที
+        ybus_matrix = build_ybus(buses, lines)
         time_index = pd.to_datetime("00:00", format='%H:%M') + pd.to_timedelta(pd.Series(range(num_steps)) * 15, unit='m')
         
-        # --- 2. เริ่มการจำลองแบบวนซ้ำ ---
         output_string += f"[2] Running simulation for {num_steps} time steps...\n"
-        all_results = []
+        all_results_dataframes = []
         
-        for step, multiplier in enumerate(load_multipliers):
+        for step, multiplier in enumerate(load_profile):
             current_loads = initial_loads.copy()
             current_loads['Pd_MW'] = initial_loads['Pd_MW'] * multiplier
             current_loads['Qd_MVAR'] = current_loads['Pd_MW'] * ((1 / current_loads['pf']**2) - 1)**0.5
+            total_demand = current_loads['Pd_MW'].sum()
             
-            converged, results_df, _, _ = run_newton_raphson(
-                bus_data=system_data['buses'],
-                gen_data=system_data['generators'],
+            dispatched_gens = initial_gens.copy()
+
+            # --- ส่วนที่เพิ่มเข้ามา: PF Dispatch Logic ---
+            active_gens = dispatched_gens[dispatched_gens['Status'] == 1].copy()
+            pg_total_initial = active_gens['Pg_MW'].sum()
+            initial_mismatch = total_demand - pg_total_initial
+            
+            slack_bus_id = buses[buses['Type'] == 1]['BusID'].iloc[0]
+            participating_gens_mask = (active_gens['BusID'] != slack_bus_id)
+            
+            if participating_gens_mask.any():
+                participating_gens = active_gens[participating_gens_mask]
+                pf_sum = participating_gens['ParticipationFactor'].sum()
+                if pf_sum > 1e-6:
+                    adjustment = initial_mismatch * (participating_gens['ParticipationFactor'] / pf_sum)
+                    active_gens.loc[participating_gens_mask, 'Pg_MW'] += adjustment
+                    active_gens['Pg_MW'] = active_gens.apply(lambda r: np.clip(r['Pg_MW'], r['Pmin_MW'], r['Pmax_MW']), axis=1)
+                    
+                    dispatched_gens.set_index('GenID', inplace=True)
+                    dispatched_gens.update(active_gens.set_index('GenID')['Pg_MW'])
+                    dispatched_gens.reset_index(inplace=True)
+            # --- จบส่วน PF Dispatch Logic ---
+
+            converged, results_df, _, losses = run_newton_raphson(
+                bus_data=buses,
+                gen_data=dispatched_gens,
                 load_data=current_loads,
                 y_bus=ybus_matrix,
-                base_mva=BASE_MVA,
-                max_iter=30
+                base_mva=BASE_MVA
             )
             
             if converged:
-                results_df['time'] = time_index[step].strftime('%H:%M') # เพิ่มคอลัมน์ 'time'
+                # Post-processing clamp for slack bus display
+                slack_bus_row = results_df[results_df['Type'] == 1]
+                if not slack_bus_row.empty:
+                    slack_bus_id_current = slack_bus_row['BusID'].iloc[0]
+                    gen_at_slack = dispatched_gens[dispatched_gens['BusID'] == slack_bus_id_current]
+                    if not gen_at_slack.empty:
+                        pmax_slack = gen_at_slack['Pmax_MW'].iloc[0]
+                        slack_row_index = slack_bus_row.index[0]
+                        current_pg = results_df.loc[slack_row_index, 'Pg_final_MW']
+                        if current_pg > pmax_slack:
+                            results_df.loc[slack_row_index, 'Pg_final_MW'] = pmax_slack
+
+                results_df['Frequency_Hz'] = 50.0
                 results_df['time_step'] = step
-                all_results.append(results_df)
+                all_results_dataframes.append(results_df)
             else:
-                output_string += f"    - Warning: Did not converge at time step {step} ({time_index[step].strftime('%H:%M')})\n"
+                output_string += f"\n[ERROR] Load flow did not converge at time step {step} ({time_index[step].strftime('%H:%M')})."
+                if all_results_dataframes:
+                    last_good_result = all_results_dataframes[-1].copy()
+                    last_good_result['time_step'] = step
+                    all_results_dataframes.append(last_good_result)
+                else:
+                    raise RuntimeError(f"NR Converge Failed at step {step}")
         
-        if not all_results:
-            output_string += "\nSimulation failed to produce any results.\n"
-            return output_string, None
+        if not all_results_dataframes:
+            raise RuntimeError("Simulation failed to produce any results.")
 
-        # --- 3. จัดการและสรุปผลลัพธ์ ---
-        output_string += "[3] Consolidating and formatting results...\n"
-        full_results_df = pd.concat(all_results, ignore_index=True)
+        output_string += "\n[3] Consolidating and formatting results...\n"
+        full_df = pd.concat(all_results_dataframes, ignore_index=True)
         
-        # เตรียมข้อมูลสำหรับกราฟ (ใช้ time_index ที่เป็น datetime object จริงๆ เพื่อให้แกน x สวยงาม)
-        total_load_mw = full_results_df.groupby('time_step')['Pd_final_MW'].sum()
-        total_load_mw.index = time_index[:len(total_load_mw)]
-
-        pivoted_v = full_results_df.pivot(index='time_step', columns='BusID', values='V_final_pu')
-        pivoted_v.index = time_index[:len(pivoted_v)]
-
-        pivoted_angle = full_results_df.pivot(index='time_step', columns='BusID', values='Angle_final_deg')
-        pivoted_angle.index = time_index[:len(pivoted_angle)]
-
+        time_map = {step: time for step, time in enumerate(time_index)}
+        full_df['datetime'] = full_df['time_step'].map(time_map)
+        
+        gen_info = system_data['generators'][['GenID', 'BusID']]
+        results_with_gen_id = pd.merge(full_df, gen_info, on='BusID', how='left')
+        online_gens_df = results_with_gen_id.dropna(subset=['GenID'])
+        pivoted_gens = online_gens_df.pivot_table(index='datetime', columns='GenID', values='Pg_final_MW', aggfunc='sum').fillna(0)
+        total_load_mw = full_df.groupby('datetime')['Pd_final_MW'].sum()
+        
         results_dict = {
-            "full_df": full_results_df,
-            "plot_data": {
+            "full_df": full_df,
+            "summary_data": {
                 "total_load_mw": total_load_mw,
-                "voltages": pivoted_v,
-                "angles": pivoted_angle
+                "pivoted_gens_mw": pivoted_gens,
             }
         }
-        
-        output_string += "\n--- Simulation Summary ---\n"
-        output_string += f"Successfully completed {len(all_results)} of {num_steps} time steps.\n"
-        peak_time = total_load_mw.idxmax().strftime('%H:%M')
-        output_string += f"Peak Load: {total_load_mw.max():.2f} MW at {peak_time}\n"
-        output_string += f"Min Voltage: {pivoted_v.min().min():.4f} p.u.\n"
-        output_string += "-" * 80 + "\n"
+        output_string += "\nContinuous Load Flow Simulation Completed."
         
     except Exception as e:
-        output_string += f"\n--- AN ERROR OCCURRED IN USE CASE ---\n{str(e)}\n"
+        import traceback
+        output_string += f"\n--- AN ERROR OCCURRED IN '{run.__name__}' USE CASE ---\n"
+        output_string += f"Error Type: {type(e).__name__}\n"
+        output_string += f"Error Message: {e}\n"
+        output_string += "--- Traceback ---\n"
+        output_string += traceback.format_exc()
+        results_dict = None
 
     return output_string, results_dict
